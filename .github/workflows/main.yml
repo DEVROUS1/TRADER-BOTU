@@ -1,0 +1,56 @@
+name: CryptoBot Runner
+
+on:
+  schedule:
+    - cron: '*/30 * * * *' # Her 30 dakikada bir çalıştır (GitHub limitleri için uygun)
+  workflow_dispatch: # Manuel tetikleme için
+
+permissions:
+  contents: write
+
+jobs:
+  run-bot:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.10'
+        cache: 'pip'
+
+    - name: Install Dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+
+    - name: Run Bot
+      env:
+        TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+        TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        TELEGRAM_CHANNEL_LINK: ${{ secrets.TELEGRAM_CHANNEL_LINK }}
+        LINKTREE_LINK: ${{ secrets.LINKTREE_LINK }}
+        GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        VIP_USER_ID: ${{ secrets.VIP_USER_ID }}
+        GITHUB_ACTIONS: "true"
+        RUN_ONCE: "true"
+        PYTHONUTF8: "1"
+      run: python "Gelişmiş Trader.py"
+
+    - name: Update Heartbeat
+      run: |
+        echo "Last run: $(date)" > heartbeat.txt
+
+    - name: Commit and Push DB Changes
+      run: |
+        git config --global user.name "github-actions[bot]"
+        git config --global user.email "github-actions[bot]@users.noreply.github.com"
+        git add crypto_bot.db ultimate_bot.log heartbeat.txt
+        git commit -m "Auto-update database and heartbeat [skip ci]" || echo "No changes to commit"
+        git pull --rebase origin main
+        git push origin main

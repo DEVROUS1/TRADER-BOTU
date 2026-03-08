@@ -1,0 +1,13 @@
+ccxt
+pandas
+numpy
+requests
+pyTelegramBotAPI
+feedparser
+matplotlib
+plotly
+kaleido
+schedule
+deep-translator
+scikit-learn
+google-genai
