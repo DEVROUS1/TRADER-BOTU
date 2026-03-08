@@ -3790,23 +3790,31 @@ def start_bot_worker():
         logger.info("🚀 ULTIMATE CRYPTO BOT - HUGGING FACE EDITION")
         logger.info("=" * 60)
 
-        # Database init
+        # 1. Database init
         Database.init_db()
         
-        # Geçmiş sinyalleri yükle
+        # 2. Servisleri başlat (MEXC, Telegram, Gemini)
+        # Bu aşama asenkron gibi thread içinde çalıştığı için Streamlit'i bloklamaz
+        init_all_services()
+        
+        # 3. Geçmiş sinyalleri yükle
         SIGNAL_HISTORY = Database.get_recent_signals(limit=50)
         logger.info(f"📂 {len(SIGNAL_HISTORY)} geçmiş sinyal yüklendi.")
         
-        # Arka plan thread: main_loop (Döngüsel görevler)
+        # 4. Arka plan thread: main_loop (Döngüsel görevler)
         main_thread = threading.Thread(target=main_loop, daemon=True)
         main_thread.start()
         logger.info("✅ Arka plan görev döngüsü başlatıldı.")
         
-        # Telegram polling'i de ayrı bir thread'de başlatalım
+        # 5. Telegram polling'i de ayrı bir thread'de başlatalım
         def run_bot():
             logger.info("📡 Telegram dinlemesi başlatılıyor...")
             try:
-                bot.infinity_polling(timeout=30, long_polling_timeout=30)
+                # bot artık global ve init_all_services ile yaratıldı
+                if bot:
+                    bot.infinity_polling(timeout=30, long_polling_timeout=30)
+                else:
+                    logger.error("❌ Bot nesnesi oluşturulamadığı için polling başlatılamadı.")
             except Exception as e:
                 logger.error(f"❌ Polling Hatası: {e}")
 

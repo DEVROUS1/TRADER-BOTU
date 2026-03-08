@@ -72,25 +72,42 @@ GITHUB_ACTIONS = os.environ.get("GITHUB_ACTIONS", "false").lower() == "true"
 RUN_ONCE = os.environ.get("RUN_ONCE", "false").lower() == "true"
 IS_CI_MODE = GITHUB_ACTIONS or RUN_ONCE
 
-# Gemini initialization
-if GEMINI_API_KEY:
-    try:
-        client = genai.Client(api_key=GEMINI_API_KEY)
-        # Daha yüksek limitli hızlı model (2.5 Flash)
-        GEN_MODEL = 'gemini-2.5-flash' 
-        logger.info("✅ Gemini AI (2.5 Flash) SDK başlatıldı")
-    except Exception as e:
-        logger.error(f"❌ Gemini başlatılamadı: {e}")
-        GEMINI_API_KEY = None
-else:
-    logger.warning("⚠️ GEMINI_API_KEY bulunamadı. AI analizi kısıtlı çalışacak.")
+# Global placeholderlar (init_all_services ile doldurulacak)
+client = None
+bot = None
+exchange = None
+GEN_MODEL = 'gemini-2.0-flash' # Varsayılan
 
-try:
-    bot = telebot.TeleBot(TELEGRAM_TOKEN)
-    logger.info("✅ Telegram bot başlatıldı")
-except Exception as e:
-    logger.error(f"❌ Telegram başlatılamadı: {e}")
-    exit(1)
+def init_all_services():
+    """Hugging Face / Docker için servisleri güvenli ve gecikmeli başlatır"""
+    global client, bot, exchange, GEN_MODEL
+    
+    logger.info("🛠️ Servisler başlatılıyor...")
+    
+    # 1. Gemini initialization
+    if GEMINI_API_KEY:
+        try:
+            client = genai.Client(api_key=GEMINI_API_KEY)
+            GEN_MODEL = 'gemini-1.5-flash' 
+            logger.info("✅ Gemini AI (1.5 Flash) SDK başlatıldı")
+        except Exception as e:
+            logger.error(f"❌ Gemini başlatılamadı: {e}")
+    
+    # 2. Telegram initialization
+    try:
+        bot = telebot.TeleBot(TELEGRAM_TOKEN)
+        logger.info("✅ Telegram bot başlatıldı")
+    except Exception as e:
+        logger.error(f"❌ Telegram başlatılamadı: {e}")
+        
+    # 3. Exchange initialization
+    try:
+        exchange = initialize_exchange()
+    except Exception as e:
+        logger.error(f"❌ Exchange başlatılamadı: {e}")
+        exchange = ccxt.mexc({'enableRateLimit': True})
+    
+    return True
 
 # Trading
 # Başlangıçta boş listeler, daha sonra update_symbols() ile dolar bazında hacmi yüksek tüm coinler yüklenecek.
@@ -147,11 +164,7 @@ def initialize_exchange():
         # Hata durumunda bile MEXC dönelim
         return ccxt.mexc({'enableRateLimit': True})
 
-try:
-    exchange = initialize_exchange()
-except Exception as e:
-    logger.error(f"❌ Exchange başlatılamadı: {e}")
-    exchange = ccxt.mexc({'enableRateLimit': True})
+# exchange global değişkeni yukarıda tanımlandı
 
 MANUAL_PORTFOLIO = {}  # {'BTC/USDT': {'amount': 0.5, 'cost': 45000, 'date': ...}}
 
