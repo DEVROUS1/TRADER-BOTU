@@ -15,8 +15,8 @@ COPY . .
 # Python bağımlılıklarını kur
 RUN pip3 install -r requirements.txt
 
-# Streamlit portunu aç
-EXPOSE 8501
+# Streamlit portunu aç (Hugging Face 7860 bekler)
+EXPOSE 7860
 
 # Uygulamayı başlat
-CMD ["streamlit", "run", "app.py", "--server.port=8501", "--server.address=0.0.0.0"]
+CMD ["streamlit", "run", "app.py", "--server.port=7860", "--server.address=0.0.0.0"]
