@@ -72,41 +72,34 @@ GITHUB_ACTIONS = os.environ.get("GITHUB_ACTIONS", "false").lower() == "true"
 RUN_ONCE = os.environ.get("RUN_ONCE", "false").lower() == "true"
 IS_CI_MODE = GITHUB_ACTIONS or RUN_ONCE
 
-# Global placeholderlar (init_all_services ile doldurulacak)
-client = None
-bot = None
+# Servisleri başlat
+try:
+    client = genai.Client(api_key=GEMINI_API_KEY)
+    GEN_MODEL = 'gemini-1.5-flash'
+    logger.info("✅ Gemini AI başlatıldı")
+except Exception as e:
+    logger.error(f"❌ Gemini hatası: {e}")
+    client = None
+
+try:
+    bot = telebot.TeleBot(TELEGRAM_TOKEN)
+    logger.info("✅ Telegram bot nesnesi oluşturuldu")
+except Exception as e:
+    logger.error(f"❌ Bot hatası: {e}")
+    bot = None
+
 exchange = None
-GEN_MODEL = 'gemini-2.0-flash' # Varsayılan
 
 def init_all_services():
-    """Hugging Face / Docker için servisleri güvenli ve gecikmeli başlatır"""
-    global client, bot, exchange, GEN_MODEL
-    
-    logger.info("🛠️ Servisler başlatılıyor...")
-    
-    # 1. Gemini initialization
-    if GEMINI_API_KEY:
+    """Ağır yükleme gerektiren servisleri arka planda başlatır"""
+    global exchange
+    if exchange is None:
         try:
-            client = genai.Client(api_key=GEMINI_API_KEY)
-            GEN_MODEL = 'gemini-1.5-flash' 
-            logger.info("✅ Gemini AI (1.5 Flash) SDK başlatıldı")
+            exchange = initialize_exchange()
+            return True
         except Exception as e:
-            logger.error(f"❌ Gemini başlatılamadı: {e}")
-    
-    # 2. Telegram initialization
-    try:
-        bot = telebot.TeleBot(TELEGRAM_TOKEN)
-        logger.info("✅ Telegram bot başlatıldı")
-    except Exception as e:
-        logger.error(f"❌ Telegram başlatılamadı: {e}")
-        
-    # 3. Exchange initialization
-    try:
-        exchange = initialize_exchange()
-    except Exception as e:
-        logger.error(f"❌ Exchange başlatılamadı: {e}")
-        exchange = ccxt.mexc({'enableRateLimit': True})
-    
+            logger.error(f"❌ Borsa bağlantı hatası: {e}")
+            return False
     return True
 
 # Trading

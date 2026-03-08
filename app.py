@@ -81,11 +81,35 @@ GITHUB_ACTIONS = os.environ.get("GITHUB_ACTIONS", "false").lower() == "true"
 RUN_ONCE = os.environ.get("RUN_ONCE", "false").lower() == "true"
 IS_CI_MODE = GITHUB_ACTIONS or RUN_ONCE
 
-# Global placeholderlar (init_all_services ile doldurulacak)
-client = None
-bot = None
+# Servisleri başlat
+try:
+    client = genai.Client(api_key=GEMINI_API_KEY)
+    GEN_MODEL = 'gemini-1.5-flash'
+    logger.info("✅ Gemini AI başlatıldı")
+except Exception as e:
+    logger.error(f"❌ Gemini hatası: {e}")
+    client = None
+
+try:
+    bot = telebot.TeleBot(TELEGRAM_TOKEN)
+    logger.info("✅ Telegram bot nesnesi oluşturuldu")
+except Exception as e:
+    logger.error(f"❌ Bot hatası: {e}")
+    bot = None
+
 exchange = None
-GEN_MODEL = 'gemini-1.5-flash' # Varsayılan
+
+def init_all_services():
+    """Ağır yükleme gerektiren servisleri arka planda başlatır"""
+    global exchange
+    if exchange is None:
+        try:
+            exchange = initialize_exchange()
+            return True
+        except Exception as e:
+            logger.error(f"❌ Borsa bağlantı hatası: {e}")
+            return False
+    return True
 
 # Trading
 # Başlangıçta boş listeler, daha sonra update_symbols() ile dolar bazında hacmi yüksek tüm coinler yüklenecek.
@@ -3768,60 +3792,68 @@ def main_loop():
 # ==========================================
 # BAŞLAT
 # ==========================================
-@st.cache_resource
-def start_bot_worker():
-    """Botu sadece bir kez ve global olarak başlatır"""
+# Arka planda botu başlatan ana fonksiyon (ASLA BLOKLAMAZ)
+def run_bot_in_background():
+    """Tüm servisleri ve bot döngüsünü arka planda başlatır"""
     try:
+        if "bot_is_running" in st.session_state and st.session_state.bot_is_running:
+            return
+            
         logger.info("=" * 60)
-        logger.info("🚀 ULTIMATE CRYPTO BOT - HUGGING FACE EDITION")
+        logger.info("🚀 ULTIMATE CRYPTO BOT - HUGGING FACE ASYNC START")
         logger.info("=" * 60)
 
         # 1. Database init
         Database.init_db()
         
-        # 2. Servisleri başlat (MEXC, Telegram, Gemini)
-        # Bu aşama asenkron gibi thread içinde çalıştığı için Streamlit'i bloklamaz
+        # 2. Ağır servisleri başlat (MEXC load markets vb.)
         init_all_services()
         
         # 3. Geçmiş sinyalleri yükle
-        SIGNAL_HISTORY = Database.get_recent_signals(limit=50)
-        logger.info(f"📂 {len(SIGNAL_HISTORY)} geçmiş sinyal yüklendi.")
+        global SIGNAL_HISTORY
+        try:
+            SIGNAL_HISTORY = Database.get_recent_signals(limit=50)
+            logger.info(f"📂 {len(SIGNAL_HISTORY)} geçmiş sinyal yüklendi.")
+        except:
+            SIGNAL_HISTORY = []
         
         # 4. Arka plan thread: main_loop (Döngüsel görevler)
         main_thread = threading.Thread(target=main_loop, daemon=True)
         main_thread.start()
         logger.info("✅ Arka plan görev döngüsü başlatıldı.")
         
-        # 5. Telegram polling'i de ayrı bir thread'de başlatalım
-        def run_bot():
-            logger.info("📡 Telegram dinlemesi başlatılıyor...")
-            try:
-                # bot artık global ve init_all_services ile yaratıldı
-                if bot:
+        # 5. Telegram polling
+        if bot:
+            def start_polling():
+                logger.info("📡 Telegram dinlemesi başlatılıyor...")
+                try:
                     bot.infinity_polling(timeout=30, long_polling_timeout=30)
-                else:
-                    logger.error("❌ Bot nesnesi oluşturulamadığı için polling başlatılamadı.")
-            except Exception as e:
-                logger.error(f"❌ Polling Hatası: {e}")
-
-        tg_thread = threading.Thread(target=run_bot, daemon=True)
-        tg_thread.start()
-        logger.info("✅ Telegram dinleme thread'i başlatıldı.")
+                except Exception as e:
+                    logger.error(f"❌ Polling durdu: {e}")
+            
+            tg_thread = threading.Thread(target=start_polling, daemon=True)
+            tg_thread.start()
+            logger.info("✅ Telegram dinleme thread'i başlatıldı.")
+        
+        st.session_state.bot_is_running = True
         return True
     except Exception as e:
-        logger.error(f"Bot başlatılırken hata: {e}")
+        logger.error(f"Arka plan başlatma hatası: {e}")
         return False
 
+# Streamlit her saniye veya tetiklendiğinde burayı çalıştırır
 if __name__ == "__main__":
-    if start_bot_worker():
-        st.success("Bot başarıyla çalışıyor! ✅")
-        st.markdown("""
-        ### Durum Raporu:
-        - **Borsaya Bağlantı:** Başarılı 📡
-        - **Telegram Dinlemesi:** Aktif 💬
-        - **7/24 Döngü:** Çalışıyor 🔄
-        
-        Tüm komutları Telegram üzerinden vermeye devam edebilirsiniz.
-        """)
-    else:
-        st.error("Bot başlatılamadı! Lütfen 'Logs' sekmesini kontrol edin.")
+    st.success("Hugging Face Sunucusu Başlatıldı! ✅")
+    st.markdown("""
+    ### Bot Durumu: **YÜKLENİYOR...** ⏳
+    Bot servisleri (Borsa, Telegram, AI) şu an arka planda kuruluyor. 
+    Bu işlem bittiğinde Telegram kanalınıza bildirim gelecektir.
+    
+    **Not:** Bu sayfa açık kalsa da kapansa da bot çalışmaya devam eder.
+    """)
+    
+    # Botu bir kez başlat
+    if "init_triggered" not in st.session_state:
+        st.session_state.init_triggered = True
+        threading.Thread(target=run_bot_in_background, daemon=True).start()
+        st.info("Arka plan kurulumu tetiklendi. Bot 7/24 aktif olacaktır.")
