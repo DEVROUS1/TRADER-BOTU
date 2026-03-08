@@ -11,3 +11,5 @@ schedule
 deep-translator
 scikit-learn
 google-genai
+streamlit
+flask
