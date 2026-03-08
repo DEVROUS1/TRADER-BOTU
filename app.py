@@ -2,20 +2,16 @@ import sys
 import io
 import streamlit as st
 import threading
+import os
 
 # Streamlit UI Setup
 st.set_page_config(page_title="KriptoGraf Finans Botu", page_icon="📈")
 st.title("📈 KriptoGraf Finans Botu")
-st.markdown("""
-### Bot Durumu: **AKTİF** ✅
-Bu uygulama Hugging Face Spaces üzerinde 7/24 çalışmaktadır.
-Telegram üzerinden komutlarınızı göndermeye devam edebilirsiniz.
-""")
-status_area = st.empty()
-status_area.info("Bot döngüsü çalışıyor...")
 
-# 1. WINDOWS TERMINAL HATASINI EN BAŞTA ÇÖZELİM
-if sys.stdout.encoding != 'utf-8':
+st.info("Bot sistemi başlatılıyor... Lütfen bekleyin.")
+
+# 1. WINDOWS TERMINAL HATASINI SADECE WINDOWS'TA ÇÖZELİM
+if os.name == 'nt' and sys.stdout.encoding != 'utf-8':
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 
 import matplotlib
@@ -3786,7 +3782,9 @@ def main_loop():
 # ==========================================
 # BAŞLAT
 # ==========================================
-if __name__ == "__main__":
+@st.cache_resource
+def start_bot_worker():
+    """Botu sadece bir kez ve global olarak başlatır"""
     try:
         logger.info("=" * 60)
         logger.info("🚀 ULTIMATE CRYPTO BOT - HUGGING FACE EDITION")
@@ -3799,30 +3797,37 @@ if __name__ == "__main__":
         SIGNAL_HISTORY = Database.get_recent_signals(limit=50)
         logger.info(f"📂 {len(SIGNAL_HISTORY)} geçmiş sinyal yüklendi.")
         
-        # Streamlit session state check to prevent multiple threads
-        if "bot_thread_started" not in st.session_state:
-            st.session_state.bot_thread_started = True
-            
-            # Arka plan thread: main_loop (Döngüsel görevler)
-            main_thread = Thread(target=main_loop, daemon=True)
-            main_thread.start()
-            logger.info("✅ Arka plan görev döngüsü başlatıldı.")
-            
-            # Telegram polling'i de ayrı bir thread'de başlatalım ki 
-            # Streamlit arayüzü kilitlenmesin
-            def run_bot():
-                logger.info("📡 Telegram dinlemesi başlatılıyor...")
-                try:
-                    bot.infinity_polling(timeout=30, long_polling_timeout=30)
-                except Exception as e:
-                    logger.error(f"❌ Polling Hatası: {e}")
-
-            tg_thread = Thread(target=run_bot, daemon=True)
-            tg_thread.start()
-            logger.info("✅ Telegram dinleme thread'i başlatıldı.")
-            
-        st.success("Bot başarıyla çalışıyor! Telegram kanalınızı kontrol edin.")
+        # Arka plan thread: main_loop (Döngüsel görevler)
+        main_thread = threading.Thread(target=main_loop, daemon=True)
+        main_thread.start()
+        logger.info("✅ Arka plan görev döngüsü başlatıldı.")
         
+        # Telegram polling'i de ayrı bir thread'de başlatalım
+        def run_bot():
+            logger.info("📡 Telegram dinlemesi başlatılıyor...")
+            try:
+                bot.infinity_polling(timeout=30, long_polling_timeout=30)
+            except Exception as e:
+                logger.error(f"❌ Polling Hatası: {e}")
+
+        tg_thread = threading.Thread(target=run_bot, daemon=True)
+        tg_thread.start()
+        logger.info("✅ Telegram dinleme thread'i başlatıldı.")
+        return True
     except Exception as e:
-        logger.critical(f"💥 KRİTİK HATA: {e}")
-        st.error(f"Kritik Hata: {e}")
+        logger.error(f"Bot başlatılırken hata: {e}")
+        return False
+
+if __name__ == "__main__":
+    if start_bot_worker():
+        st.success("Bot başarıyla çalışıyor! ✅")
+        st.markdown("""
+        ### Durum Raporu:
+        - **Borsaya Bağlantı:** Başarılı 📡
+        - **Telegram Dinlemesi:** Aktif 💬
+        - **7/24 Döngü:** Çalışıyor 🔄
+        
+        Tüm komutları Telegram üzerinden vermeye devam edebilirsiniz.
+        """)
+    else:
+        st.error("Bot başlatılamadı! Lütfen 'Logs' sekmesini kontrol edin.")
